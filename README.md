@@ -1,9 +1,11 @@
 # State-Directed-Optical-Data-Fabric-for-Heterogeneous-Processors
 
-## Concept paper
+## Concept paper v0.3
 
-This repository presents a high-level proposal for a hybrid processor architecture: electronic cores and memory, an optical data fabric for framed transfers, and hierarchical state-directed routing.
+This proposal combines electronic compute and memory with an optical data fabric, 512-bit logical transfer beats, and hierarchical state-directed routing.
+
+The first evaluation target is bulk data movement for accelerators and data-intensive workloads. The design explores local burst coalescing and bio-inspired flow-control heuristics: credit-gated admission, demand-aware child routers, branching capacity, and lossless ingress checks.
 
 [Read the concept paper](STATE_DIRECTED_OPTICAL_DATA_FABRIC_CONCEPT_PAPER.md)
 
-The 12 TB/s figure in the paper is a modeled design target based on stated assumptions. It is not measured hardware throughput or a demonstrated CPU speedup. No processor hardware has been built.
+The 12 TB/s figure is a modeled target that depends on stated assumptions, including large bursts per route lookup. It is not measured hardware throughput or a demonstrated CPU speedup. No processor hardware has been built.
