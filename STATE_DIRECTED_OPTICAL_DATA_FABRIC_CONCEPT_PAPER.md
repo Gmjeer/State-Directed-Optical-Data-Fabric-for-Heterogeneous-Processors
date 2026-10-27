@@ -2,16 +2,16 @@
 ## A High-Level Concept Architecture
 
 **Author:** Emerson Star (Shane A. Fortner)  
-**Version:** 0.4 — 27 October 2026  
+**Version:** 0.6 — 27 October 2026  
 **Status:** Concept proposal; no processor hardware has been built.
 
 ### Abstract
 
 Modern processors move large volumes of information among compute units, caches, memory, and other devices. Optical links can carry data at high aggregate rates, while electronic processors remain effective at general-purpose instruction execution. This paper proposes a hybrid architecture that combines those strengths: conventional electronic cores and memory connected by an optical data fabric, coordinated by a hierarchical, state-directed routing engine.
 
-The proposed routing engine would track the condition and demand of the fabric, then coordinate local child routers and shared routes as traffic changes. Its purpose is to organize data movement among compute and memory domains. The concept does not assume that light itself replaces a CPU, that a wavelength inherently represents a fixed number of bits, or that light is a persistent cache. Optical signals would be framed, detected, checked, and delivered to ordinary electronic processing and storage.
+The proposed routing engine would track the condition and demand of the fabric, then coordinate local child routers and shared routes as traffic changes. Programs or operation graphs can be configured before a stream arrives; after the task header and route are accepted, a processing node can begin on the first valid beat and pipeline later beats without waiting for the full file to be staged. Active capacity should respond to admitted work, queue backlog, deadlines, receiver credits, and physical reconfiguration limits. The concept does not assume that light itself replaces a CPU, that a wavelength inherently represents a fixed number of bits, or that light is a persistent cache. Optical signals would be framed, detected, checked, and delivered to electronic processing and storage, except where a separately defined photonic operation processes an optical signal directly.
 
-The potential contribution is the system-level organization of optical paths and routing state around heterogeneous compute and memory domains. The first evaluation target is bulk data movement for accelerators and other data-intensive workloads, not a demonstrated general-purpose CPU replacement. An exploratory capacity model sizes a hypothetical configuration for a 12 TB/s useful-aggregate-bandwidth target, using a 512-bit logical transfer beat and much larger bursts per route decision. It reaches the target only under specified, unmeasured assumptions; it does not demonstrate physical throughput or end-to-end speedup.
+The concept now keeps two related architectural paths in view. A **hybrid CPU-fabric** uses conventional programmable cores and applies the fabric to selected data movement. A **network-native processor** makes processing elements nodes of the routed network, with streams carrying operands and partial results between them. Both use hierarchical state-directed routing, flow control, and 512-bit logical beats; they differ in where application computation occurs and how programs are mapped. An exploratory capacity model sizes a hypothetical fabric for 12 TB/s, with a 100× scale-out calculation to 1.2 PB/s. These are assumption-based projections, not physical throughput or end-to-end speedup.
 
 ### 1. Motivation
 
@@ -21,15 +21,29 @@ A useful processor design must account for the full path. It must include the co
 
 ### 2. Proposed architecture
 
-The concept has five cooperating parts:
+The paper studies two configurations built around a shared fabric and control foundation. They are related, but they are not the same processor model.
 
-1. **Electronic compute and memory.** General-purpose CPU cores, caches, memory controllers, and RAM retain conventional digital state and execute ordinary instructions.
-2. **Optical data fabric.** Optical links carry framed transfers among selected compute, cache, memory, and I/O endpoints. The initial interface uses a **512-bit (64-byte) logical beat**. This is a group of payload bits encoded onto an optical signal over time, not 512 bits carried by one wavelength or one flash of light.
-3. **Hierarchical routing control.** A master state engine maintains system-level routing policy and capacity information. Child routers manage local paths and queues, reporting availability and demand to the master. The proposed fast path uses local admission and burst descriptors so the master does not need to make a software-level decision for every 512-bit beat.
-4. **Electronic endpoints.** At each boundary, transceivers encode electrical data into optical signals and detect incoming signals back into electrical data. Endpoint logic checks frames and places accepted transfers into electronic queues for the destination.
-5. **Hybrid buffering.** Electronic FIFOs/SRAM hold mutable data and route descriptors. A bounded optical loop may be tested as a short delay element for in-flight light, but it is not assumed to be persistent storage or an L1 cache; recirculation would need measured loss, noise, and timing limits.
+#### Shared fabric and control foundation
 
-The state engine’s job is to select among available routes, coordinate capacity, and respond to congestion or path faults. It does not execute application instructions or replace cache and memory state. A frame would carry enough control information for its destination and integrity to be checked, while the payload travels over an assigned optical path. A local coalescer may combine compatible beats into a larger burst under one route descriptor. It must preserve each beat’s address, permissions, integrity status, and required ordering. A valid-byte mask marks partial beats; padding is overhead and is excluded from useful-bandwidth totals. A timeout or size limit prevents a small flow from waiting indefinitely for a full burst.
+1. **512-bit logical stream beat.** A beat groups 64 bytes of payload for framing and processing. It is encoded on an optical signal over time; it is not 512 bits carried by one wavelength or one flash of light.
+2. **Hierarchical state-directed network.** A master state engine maintains global routing policy and capacity information. Child routers manage local routes, queues, and credits. Route setup and burst descriptors amortize control over a stream; compatible beats may be coalesced while preserving address, permission, integrity, sequence, and ordering semantics.
+3. **Electronic endpoints and buffering.** Transceivers convert between electrical and optical signals. Electronic FIFOs/SRAM hold mutable data and retry state. A bounded optical loop may be tested as a short delay element, not assumed to be persistent storage or an L1 cache.
+4. **Flow control and recovery.** Frames carry source/destination, stream and sequence identity, payload length, route epoch, and integrity information. Credits, acknowledgements, retry, duplicate suppression, and backpressure protect data when queues or paths fail.
+5. **Stream-first execution and elastic allocation.** Configure the operation and route before payload arrival where possible. An ingress controller reads enough framing/header information to validate the task and select the route; intermediate optical switches may forward payload without fully decoding it. A compute endpoint converts/detects the payload or invokes a defined photonic operation, then starts processing at the first complete valid beat. Results can flow onward as they are produced. Queue occupancy, accepted rate, task deadlines, receiver credits, and known burst demand guide active lane allocation. Keep installed peak capacity distinct from active rate and useful delivered rate. Channel or laser turn-on, wavelength settling, and power savings are hardware questions to measure; do not assume instantaneous reconfiguration or proportional power savings.
+
+#### Architecture A: hybrid CPU-fabric
+
+Conventional programmable cores execute application instructions and retain ordinary register, cache, and memory semantics. The optical fabric carries selected bulk transfers among CPU, accelerator, memory, and I/O domains. The state engine chooses and checks routes but does not execute the application program. This is the lower-risk integration path and the reference point for measuring whether optical transport helps a workload.
+
+#### Architecture B: network-native processor
+
+Processing elements are nodes in the routed graph. The network is the computer's execution topology: stream operands move to nodes, nodes apply defined operations using local state, and partial results flow to other nodes or destinations. The state engine coordinates routes, dependencies, and flow, but routing alone does not perform arithmetic. This path requires a distributed operation/instruction model, local state, synchronization, precise error behavior, and a compiler or mapping system. `DOT16.I16`, a signed 16-lane dot-product primitive over one 512-bit beat, is the first functional example.
+
+Both configurations use the same general transport ideas. Results for one configuration should not be presented as proof for the other. For example, a transport capacity projection does not establish that the network-native nodes can execute a workload at that rate.
+
+A valid-byte mask marks partial beats; padding is overhead and is excluded from useful-bandwidth totals. A timeout or size limit prevents a small flow from waiting indefinitely for a full burst.
+
+The route descriptor and the payload batch are separate concepts. A long-lived route can be set up once while beats are processed continuously; the 512 KiB value in the capacity model is an assumed amount of payload amortized per controller lookup, not a requirement to buffer 512 KiB before execution begins. A kernel that requires a complete frame, temporal window, or global dependency must still wait for that required state. The first FPGA/software timing model should measure route setup, first-beat latency, steady-state valid beats per second, queue stalls, and end-of-stream completion separately.
 
 #### Bio-inspired control heuristics
 
@@ -50,7 +64,7 @@ Optical data transport and optical computation are established research areas. A
 
 There is also a direct conceptual neighbor: a 2024 paper presents an all-optical general-purpose CPU architecture and a photonic integrated circuit implementation of a minimal processor design. These results show that the broader idea of optical computing, optical processor proposals, and photonic routing are not new by themselves.
 
-The proposed contribution is narrower and architectural: a hierarchical master/child routing organization, directed by explicit system state, integrated with conventional electronic cores and cache/memory domains. Whether this combination is novel requires a more complete literature and patent review. This paper makes no claim that the concept is the first optical CPU or the first optical router.
+The proposed contribution is narrower and architectural: a hierarchical master/child routing organization directed by explicit system state, evaluated in both a conventional CPU-fabric integration and a network-native processor topology. Whether either configuration or their shared control organization is novel requires a more complete literature and patent review. This paper makes no claim that the concept is the first optical CPU or the first optical router.
 
 ### 4. Working hypotheses
 
@@ -61,6 +75,7 @@ The architecture is intended to test the following hypotheses:
 - Using optical links for selected high-volume transfers can raise available inter-domain bandwidth when electrical links are the limiting stage.
 - Keeping instruction execution and ordinary cache state electronic can reduce the scope of the first implementation and preserve access to conventional software tools.
 - Route selection should account for queue delay, contention, integrity failures, and conversion overhead, rather than maximizing raw link rate alone.
+- The same state-directed fabric may support two distinct compute placements: conventional cores attached to the fabric, or processing elements distributed as network nodes. Each configuration needs separate workload and correctness tests.
 
 These are hypotheses, not established findings. A successful design may improve bandwidth for some workloads while providing little benefit for workloads limited by computation, latency, or serial dependencies.
 
@@ -84,11 +99,19 @@ A new **functional software integration test** connects the RV64 state-engine in
 
 The integration test then reapplies the existing route-setup capacity assumptions across payload sizes. Under those assumptions, the setup-controller ceiling is 1.485 GB/s when each route setup covers one 64-byte beat, 0.095 TB/s for 4 KiB, 1.520 TB/s for 64 KiB, and 12.163 TB/s for 512 KiB; at the last size, the modeled child-path ceiling limits delivered capacity to 12.0024 TB/s. These are arithmetic projections, not measurements, and the long-stream case does not show that arbitrary workloads can combine data into such streams.
 
-The test establishes a small functional connection between RV64 instruction execution and lossless 512-bit stream framing. It does not encode or detect photons. The project still has no physical optical link, validated optical buffer, RTL processor, full-system memory model, or end-to-end workload benchmark.
+The RV64 integration test establishes a small functional connection between a conventional instruction interpreter and lossless 512-bit stream framing. Separately, the `DOT16.I16` test maps a signed 16-lane dot-product primitive to 333,334 virtual processing nodes and an eight-ary reduction tree. The result matched an independent scalar reference. A 75-million-node software stress run also produced an exact tree-reduction result. These runs validate specific software functions and accounting; they do not encode or detect photons or validate physical routing.
 
-Accordingly, the 12 TB/s figure is a **design target that the assumptions are chosen to meet**, not achieved throughput. No processor prototype or operating-system execution exists, and the models do not establish performance for gaming, servers, video editing, or general software. The first practical evaluation should focus on accelerator-style streaming and bulk transfers. Fine-grained CPU traffic remains an open question, not a claimed capability. The models do not show a CPU speedup.
+A further **software scale-out test** executed 100,000 deterministic `DOT16.I16` tasks, totaling 6.4 MB of logical input, against a scalar reference. Four virtual nodes with different assumed service rates and a three-node retry produced exact results. An illustrative timing calculation under declared hypothetical rates estimated 100 ms on one virtual host, 39.412 ms with four nodes and local input, 61.200 ms when the input crossed a modeled shared link, and 55.455 ms when one node was unavailable and retained input was reassigned. These are not measured CPU, network, FPGA, or optical timings: the processing rates, 1-Gbit/s link, 10-ms control round trip, overlap, and retry-buffer availability are scenario assumptions. The test illustrates locality sensitivity; it does not establish speedup.
 
-A defensible performance claim will require the same named workloads and inputs on both the proposed system and a modern reference processor, with correctness, throughput, latency, and power reported. The model also needs calibration against measured processor and interconnect data before its predicted execution times can support comparative claims.
+For the 100× scale-out target (1.2 PB/s), direct arithmetic using the prior per-resource assumptions calls for about 333,334 child paths, 500 active parent links plus one spare, 297 router shards, and 733 memory domains. The network-native `DOT16.I16` workload performs 31 scalar operations per 64-byte beat, or about 581 TOP/s aggregate at 1.2 PB/s if every beat is processed. These figures are conditional scale calculations, not evidence that this node count, memory system, compute rate, or throughput can be built. The 75-million-node stress used 4.8 GB of software payload; its 270 PB/s figure is only node count multiplied by an assumed per-node path rate.
+
+Neither approach has a physical optical link, validated optical buffer, RTL processor, full-system memory model, or end-to-end workload benchmark. The two configurations remain separate evaluation tracks.
+
+Accordingly, the 12 TB/s and 1.2 PB/s figures are **design targets that the assumptions are chosen to meet**, not achieved throughput. No processor prototype or operating-system execution exists. The models do not establish performance for gaming, servers, video editing, or general software. The hybrid path should first be evaluated on accelerator-style bulk transfers; the network-native path should first be evaluated on defined streaming primitives. Fine-grained CPU traffic and general-purpose distributed execution remain open questions, not claimed capabilities. The models do not show a CPU speedup.
+
+A defensible performance claim will compare each architecture with an appropriate baseline using the same workload and input: a conventional CPU/NoC for the hybrid path, and a conventional distributed processor or accelerator for the network-native path. Report correctness, throughput, latency, and power separately. The model also needs calibration against measured processor and interconnect data before its predicted execution times can support comparative claims.
+
+The demand-driven design should be evaluated with time-series counters for offered payload, active lane/channel count, useful valid bytes delivered, queue depth, stall cycles, first-beat latency, route setup/reconfiguration time, error/retry rate, and measured power. Report peak provisioned capacity separately from time-windowed active capacity and useful throughput. A fixed optical clock or carrier frequency is not the same as useful application throughput. The target controller should provision for backlog and deadlines, not just instantaneous arrivals, and preserve a minimum control path plus any reserve needed to meet latency objectives.
 
 ### 6. Engineering questions
 
@@ -105,15 +128,16 @@ A staged evaluation can make the concept testable:
 3. Compare centralized per-beat control with local credit gates, child-router demand response, and batched route descriptors.
 4. Model route allocation, congestion, failures, exception traffic, and fallback behavior.
 5. Compare one, two, and additional memory domains under identical accelerator-style and general-purpose traces.
-6. Report useful bandwidth separately from padded/raw bandwidth, plus median and tail latency, queue occupancy, correctness, and energy assumptions.
-7. Connect instruction-generated memory transactions during execution to a cycle-accurate or RTL core/cache/router model; compare with a conventional electronic NoC and memory baseline using identical traces.
-8. Calibrate against published hardware data, then against a physical link or prototype when available; run application benchmarks only after the model can represent their compute and memory behavior.
+6. Report useful bandwidth separately from padded/raw bandwidth, plus median and tail latency, queue occupancy, correctness, and energy assumptions. Also measure first-beat start, steady-state beat rate, and end-of-stream time.
+7. Sweep offered traffic and queue backlog; measure active lane/channel duty cycle, allocation response, hysteresis, optical/electronic reconfiguration delay, retry cost, and power. Keep logical allocation tests separate from physical laser/wavelength switching tests.
+8. Connect instruction-generated memory transactions during execution to a cycle-accurate or RTL core/cache/router model; compare with a conventional electronic NoC and memory baseline using identical traces.
+9. Calibrate against published hardware data, then against a physical link or prototype when available; run application benchmarks only after the model can represent their compute and memory behavior.
 
 A result should be reported as a modeled projection until a calibrated model or hardware test supports it. A bandwidth gain should be reported separately from whole-application speedup.
 
 ### Conclusion
 
-A hybrid processor fabric that combines electronic computation with optical data movement, burst coalescing, and hierarchical state-directed routing is a concrete architecture concept worth evaluating first for data-intensive accelerator transfers. Its plausible contribution lies in the control and traffic organization, not in the general use of light or in biological novelty. The 512-bit beat defines a transfer unit; the 12 TB/s projection additionally depends on amortizing route decisions over large bursts.
+A hybrid and network-native processor fabric combining electronic computation, optical data movement, stream-first execution, demand-driven capacity allocation, and hierarchical state-directed routing is a concrete architecture concept worth evaluating for data-intensive workloads. Its plausible contribution lies in the execution and traffic organization, not in the general use of light or in biological novelty. A configured stream may begin processing at its first valid beat; the 512-bit beat defines a logical transfer unit, while the 12 TB/s figure remains a peak design target based on unvalidated assumptions. Effective throughput depends on offered load, data locality, compute capacity, queueing, and the full memory/link path.
 
 The next step is a calibrated core, cache, coherence, and router model with real workload traces. Until a processor is implemented and benchmarked, performance advantages remain unproven.
 
