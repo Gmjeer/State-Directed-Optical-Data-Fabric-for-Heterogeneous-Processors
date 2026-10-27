@@ -2,7 +2,7 @@
 ## A High-Level Concept Architecture
 
 **Author:** Emerson Star (Shane A. Fortner)  
-**Version:** 0.2 — 27 October 2026  
+**Version:** 0.3 — 27 October 2026  
 **Status:** Concept proposal; no processor hardware has been built.
 
 ### Abstract
@@ -11,7 +11,7 @@ Modern processors move large volumes of information among compute units, caches,
 
 The proposed routing engine would track the condition and demand of the fabric, then coordinate local child routers and shared routes as traffic changes. Its purpose is to organize data movement among compute and memory domains. The concept does not assume that light itself replaces a CPU, that a wavelength inherently represents a fixed number of bits, or that light is a persistent cache. Optical signals would be framed, detected, checked, and delivered to ordinary electronic processing and storage.
 
-The potential contribution is the system-level organization of optical paths and routing state around a general-purpose processor. Existing research already covers optical links, photonic networks-on-chip, optical accelerators, and all-optical processor concepts. The architecture therefore requires a precise comparison with those fields. An exploratory capacity model now sizes a hypothetical configuration for a 12 TB/s useful-aggregate-bandwidth target. It reaches that target only under specified, unmeasured component and batching assumptions; it does not demonstrate physical throughput or end-to-end CPU speedup.
+The potential contribution is the system-level organization of optical paths and routing state around heterogeneous compute and memory domains. The first evaluation target is bulk data movement for accelerators and other data-intensive workloads, not a demonstrated general-purpose CPU replacement. An exploratory capacity model sizes a hypothetical configuration for a 12 TB/s useful-aggregate-bandwidth target, using a 512-bit logical transfer beat and much larger bursts per route decision. It reaches the target only under specified, unmeasured assumptions; it does not demonstrate physical throughput or end-to-end speedup.
 
 ### 1. Motivation
 
@@ -21,14 +21,26 @@ A useful processor design must account for the full path. It must include the co
 
 ### 2. Proposed architecture
 
-The concept has four cooperating parts:
+The concept has five cooperating parts:
 
 1. **Electronic compute and memory.** General-purpose CPU cores, caches, memory controllers, and RAM retain conventional digital state and execute ordinary instructions.
-2. **Optical data fabric.** Optical links carry framed transfers among selected compute, cache, memory, and I/O endpoints.
-3. **Hierarchical routing control.** A master state engine maintains system-level routing policy and capacity information. Child routers manage local paths and queues, reporting availability and demand to the master.
+2. **Optical data fabric.** Optical links carry framed transfers among selected compute, cache, memory, and I/O endpoints. The initial interface uses a **512-bit (64-byte) logical beat**. This is a group of payload bits encoded onto an optical signal over time, not 512 bits carried by one wavelength or one flash of light.
+3. **Hierarchical routing control.** A master state engine maintains system-level routing policy and capacity information. Child routers manage local paths and queues, reporting availability and demand to the master. The proposed fast path uses local admission and burst descriptors so the master does not need to make a software-level decision for every 512-bit beat.
 4. **Electronic endpoints.** At each boundary, transceivers encode electrical data into optical signals and detect incoming signals back into electrical data. Endpoint logic checks frames and places accepted transfers into electronic queues for the destination.
+5. **Hybrid buffering.** Electronic FIFOs/SRAM hold mutable data and route descriptors. A bounded optical loop may be tested as a short delay element for in-flight light, but it is not assumed to be persistent storage or an L1 cache; recirculation would need measured loss, noise, and timing limits.
 
-The state engine’s job is to select among available routes, coordinate capacity, and respond to congestion or path faults. It does not execute application instructions or replace cache and memory state. A frame would carry enough control information for its destination and integrity to be checked, while the payload travels over an assigned optical path.
+The state engine’s job is to select among available routes, coordinate capacity, and respond to congestion or path faults. It does not execute application instructions or replace cache and memory state. A frame would carry enough control information for its destination and integrity to be checked, while the payload travels over an assigned optical path. A local coalescer may combine compatible beats into a larger burst under one route descriptor. It must preserve each beat’s address, permissions, integrity status, and required ordering. A valid-byte mask marks partial beats; padding is overhead and is excluded from useful-bandwidth totals. A timeout or size limit prevents a small flow from waiting indefinitely for a full burst.
+
+#### Bio-inspired control heuristics
+
+These are engineering analogies, not claims that the processor reproduces biological mechanisms:
+
+- **Heart: one-way admission.** Credit-based gates admit a burst only when the next buffer has room, preventing a sender from overrunning its receiver.
+- **Brain: local demand response.** Child routers adjust their service shares from local queue and receiver-credit signals; the master sets slower system-wide quotas and priorities.
+- **Lungs: hierarchical distribution.** Parent paths branch into child groups and endpoints. Capacity must scale at every level with downstream demand; extra leaf paths do not help if an upstream branch is undersized. Lung studies show that matching flow depends on more than branch geometry, so equal utilization of all child paths must be measured, not assumed.
+- **Liver: selective first-pass checks.** Every ingress frame gets inexpensive framing, destination, authorization, and integrity checks. Suspect frames use a separate repair or quarantine path. A transparent CPU fabric preserves valid payloads; it does not discard data merely because it appears unnecessary.
+
+The model should treat queue occupancy and receiver credits as control signals, not literal fluid pressure. Physiology motivates the control pattern; digital queueing and optical link models must evaluate it.
 
 This hybrid boundary keeps the proposal compatible in principle with established processor software models. It also makes conversion and buffering costs visible. Persistent cache contents remain electronic in the initial architecture; optical transport is not treated as a store unless a separate storage technology is specified and evaluated.
 
@@ -45,6 +57,7 @@ The proposed contribution is narrower and architectural: a hierarchical master/c
 The architecture is intended to test the following hypotheses:
 
 - A state-directed hierarchy can allocate optical path capacity to changing traffic demand while preserving local routing decisions.
+- Coalescing compatible 512-bit beats into bursts can amortize route setup while preserving per-beat address, permission, and ordering semantics.
 - Using optical links for selected high-volume transfers can raise available inter-domain bandwidth when electrical links are the limiting stage.
 - Keeping instruction execution and ordinary cache state electronic can reduce the scope of the first implementation and preserve access to conventional software tools.
 - Route selection should account for queue delay, contention, integrity failures, and conversion overhead, rather than maximizing raw link rate alone.
@@ -53,7 +66,7 @@ These are hypotheses, not established findings. A successful design may improve 
 
 ### 5. Preliminary model and evidence boundary
 
-The software models represent compute and memory domains, optical paths, state/action dispatch, and routing limits using configurable assumptions. An earlier two-domain comparison projected twice the one-domain memory-bandwidth ceiling, assuming both domains sustain their configured rates and the fabric can carry the traffic. A newer scenario sizes a hypothetical system for **12 TB/s of useful aggregate payload bandwidth**:
+The software models represent compute and memory domains, optical paths, state/action dispatch, and routing limits using configurable assumptions. An earlier two-domain comparison projected twice the one-domain memory-bandwidth ceiling, assuming both domains sustain their configured rates and the fabric can carry the traffic. A newer scenario sizes a hypothetical system for **12 TB/s of useful aggregate payload bandwidth**. Here, 512 bits is the logical beat width; it is distinct from the much larger **512 KiB burst** assumed per state lookup:
 
 | Modeled stage | Scenario assumption | Modeled ceiling |
 |---|---|---:|
@@ -63,11 +76,11 @@ The software models represent compute and memory domains, optical paths, state/a
 | Memory domains | Eight × 1.638 TB/s | 13.104 TB/s |
 | State/action dispatch | Four assumed 2.9 GHz control cores at 500 cycles per lookup; one lookup per 512 KiB batch | 12.163 TB/s equivalent |
 
-In the healthy capacity scenario, the calculated system ceiling is **12.0024 TB/s**, limited by the child-path assumption. With one parent link unavailable, the calculation is **12.0000 TB/s**, leaving effectively no margin. The result is highly sensitive to dispatch granularity: halving the batch to 256 KiB lowers the modeled ceiling to 6.082 TB/s; using 64-byte batches lowers it to 1.485 GB/s. Routing each useful payload byte across the fabric twice or four times lowers the modeled ceiling to 6.0012 TB/s or 3.0006 TB/s. Staging every payload byte through the modeled 4.096 TB/s SRAM also limits the model to 4.096 TB/s.
+In the healthy capacity scenario, the calculated system ceiling is **12.0024 TB/s**, limited by the child-path assumption. With one parent link unavailable, the calculation is **12.0000 TB/s**, leaving effectively no margin. A 512-bit beat is 64 bytes; if the modeled controller performs one lookup for each beat, its 23.2 million lookups per second limit payload throughput to **1.485 GB/s**. The 512 KiB burst assumption combines 8,192 such beats under one lookup. Halving the burst to 256 KiB lowers the modeled ceiling to 6.082 TB/s. Routing each useful payload byte across the fabric twice or four times lowers the modeled ceiling to 6.0012 TB/s or 3.0006 TB/s. Staging every payload byte through the modeled 4.096 TB/s SRAM also limits the model to 4.096 TB/s.
 
 These are capacity calculations from scenario inputs, not measured device characteristics. The model assumes, among other things, that one state lookup can authorize a 512 KiB payload batch; it does not establish that this is correct or safe for general-purpose CPU workloads. A separate software state/action demonstration executes a small instruction sequence and reaches its expected result, but it does not encode or detect photons. The model does not include a physical optical link, a validated optical buffer, RTL, a working processor, or an end-to-end benchmark.
 
-Accordingly, the 12 TB/s figure is a **design target that the assumptions are chosen to meet**, not achieved throughput. No processor prototype or operating-system execution exists, and the models do not establish performance for gaming, servers, video editing, or general software. They do not show a CPU speedup.
+Accordingly, the 12 TB/s figure is a **design target that the assumptions are chosen to meet**, not achieved throughput. No processor prototype or operating-system execution exists, and the models do not establish performance for gaming, servers, video editing, or general software. The first practical evaluation should focus on accelerator-style streaming and bulk transfers. Fine-grained CPU traffic remains an open question, not a claimed capability. The models do not show a CPU speedup.
 
 A defensible performance claim will require the same named workloads and inputs on both the proposed system and a modern reference processor, with correctness, throughput, latency, and power reported. The model also needs calibration against measured processor and interconnect data before its predicted execution times can support comparative claims.
 
@@ -82,18 +95,18 @@ System-level evaluation must include end-to-end energy and latency: laser genera
 A staged evaluation can make the concept testable:
 
 1. Define one reference processor configuration and a documented memory hierarchy.
-2. Connect address traces and cache/coherence transactions to the router timeline.
-3. Model route allocation, congestion, failures, and fallback behavior.
-4. Compare one, two, and additional memory domains under identical workloads.
-5. Report bandwidth, median and tail latency, queue occupancy, correctness, and energy assumptions.
-6. Calibrate against published hardware data, then against a physical link or prototype when available.
-7. Run representative application benchmarks only after the model can execute or faithfully represent their instruction and memory behavior.
+2. Sweep transfer sizes from 64-byte beats through multi-kilobyte and 256/512 KiB bursts, using address traces and cache/coherence transactions.
+3. Compare centralized per-beat control with local credit gates, child-router demand response, and batched route descriptors.
+4. Model route allocation, congestion, failures, exception traffic, and fallback behavior.
+5. Compare one, two, and additional memory domains under identical accelerator-style and general-purpose traces.
+6. Report useful bandwidth separately from padded/raw bandwidth, plus median and tail latency, queue occupancy, correctness, and energy assumptions.
+7. Calibrate against published hardware data, then against a physical link or prototype when available; run application benchmarks only after the model can represent their compute and memory behavior.
 
 A result should be reported as a modeled projection until a calibrated model or hardware test supports it. A bandwidth gain should be reported separately from whole-application speedup.
 
 ### Conclusion
 
-A hybrid processor that combines electronic computation with optical data movement and hierarchical state-directed routing is a concrete architecture concept worth evaluating. Its plausible contribution lies in how it coordinates optical paths across compute and memory domains, not in the general use of light for communication or computation. Existing photonic systems provide relevant building blocks and important prior art.
+A hybrid processor fabric that combines electronic computation with optical data movement, burst coalescing, and hierarchical state-directed routing is a concrete architecture concept worth evaluating first for data-intensive accelerator transfers. Its plausible contribution lies in the control and traffic organization, not in the general use of light or in biological novelty. The 512-bit beat defines a transfer unit; the 12 TB/s projection additionally depends on amortizing route decisions over large bursts.
 
 The next step is a calibrated core, cache, coherence, and router model with real workload traces. Until a processor is implemented and benchmarked, performance advantages remain unproven.
 
@@ -104,4 +117,8 @@ The next step is a calibrated core, cache, coherence, and router model with real
 - “Dynamic switching of a packaged photonic integrated network-on-chip using an FPGA controller,” *Optics Letters*, 2018. [Optica Publishing Group](https://opg.optica.org/ol/abstract.cfm?uri=ol-43-21-5471)
 - “On the network design and control of an optical network: interconnecting multiple chips on a wafer,” *Journal of Optical Communications and Networking*, vol. 15, no. 2, 2023. [Optica Publishing Group](https://opg.optica.org/jocn/abstract.cfm?uri=jocn-15-2-119)
 - “120 GOPS Photonic tensor core in thin-film lithium niobate for inference and in situ training,” *Nature Communications*, 2024. [Nature Communications](https://www.nature.com/articles/s41467-024-53261-x)
+- J. A. H. R. Claassen et al., “Regulation of cerebral blood flow in humans: physiology and clinical implications of autoregulation,” *Physiological Reviews*, vol. 101, no. 4, 2021. [American Physiological Society](https://doi.org/10.1152/physrev.00022.2020)
+- W. Kang et al., “Gravity outweighs the contribution of structure to passive ventilation-perfusion matching in the supine adult human lung,” *Journal of Applied Physiology*, vol. 124, no. 1, pp. 23–33, 2018. [American Physiological Society](https://doi.org/10.1152/japplphysiol.00791.2016)
+- J. M. Mates et al., “Mouse Liver Sinusoidal Endothelium Eliminates HIV-Like Particles from Blood at a Rate of 100 Million per Minute by a Second-Order Kinetic Process,” *Frontiers in Immunology*, vol. 8, article 35, 2017. [Frontiers](https://doi.org/10.3389/fimmu.2017.00035)
+- National Heart, Lung, and Blood Institute, “How the Heart Works: Blood Flow Through the Heart.” [NHLBI](https://www.nhlbi.nih.gov/health/heart/blood-flow)
 
