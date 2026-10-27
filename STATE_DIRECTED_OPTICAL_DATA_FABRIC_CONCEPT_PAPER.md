@@ -2,7 +2,7 @@
 ## A High-Level Concept Architecture
 
 **Author:** Emerson Star (Shane A. Fortner)  
-**Version:** 0.3 — 27 October 2026  
+**Version:** 0.4 — 27 October 2026  
 **Status:** Concept proposal; no processor hardware has been built.
 
 ### Abstract
@@ -78,7 +78,13 @@ The software models represent compute and memory domains, optical paths, state/a
 
 In the healthy capacity scenario, the calculated system ceiling is **12.0024 TB/s**, limited by the child-path assumption. With one parent link unavailable, the calculation is **12.0000 TB/s**, leaving effectively no margin. A 512-bit beat is 64 bytes; if the modeled controller performs one lookup for each beat, its 23.2 million lookups per second limit payload throughput to **1.485 GB/s**. The 512 KiB burst assumption combines 8,192 such beats under one lookup. Halving the burst to 256 KiB lowers the modeled ceiling to 6.082 TB/s. Routing each useful payload byte across the fabric twice or four times lowers the modeled ceiling to 6.0012 TB/s or 3.0006 TB/s. Staging every payload byte through the modeled 4.096 TB/s SRAM also limits the model to 4.096 TB/s.
 
-These are capacity calculations from scenario inputs, not measured device characteristics. The model assumes, among other things, that one state lookup can authorize a 512 KiB payload batch; it does not establish that this is correct or safe for general-purpose CPU workloads. A separate software state/action demonstration executes a small instruction sequence and reaches its expected result, but it does not encode or detect photons. The model does not include a physical optical link, a validated optical buffer, RTL, a working processor, or an end-to-end benchmark.
+These are capacity calculations from scenario inputs, not measured device characteristics. The model assumes, among other things, that one state lookup can authorize a 512 KiB payload batch; it does not establish that this is correct or safe for general-purpose CPU workloads.
+
+A new **functional software integration test** connects the RV64 state-engine interpreter to the stream-framing model. A machine-code loop using `LUI`, `ADDI`, `SD`, `BNE`, and `EBREAK` retired 4,099 instructions and emitted 1,024 sequential 64-bit stores (8,192 bytes). The test grouped eight 64-bit values into each of 128 logical 512-bit beats; SHA-256 hashes matched before and after packing, confirming that the payload was preserved. The harness captures stores after the interpreter executes them. It does not send instruction-generated transactions through a timed cache, memory hierarchy, or optical router, and it does not measure throughput or energy.
+
+The integration test then reapplies the existing route-setup capacity assumptions across payload sizes. Under those assumptions, the setup-controller ceiling is 1.485 GB/s when each route setup covers one 64-byte beat, 0.095 TB/s for 4 KiB, 1.520 TB/s for 64 KiB, and 12.163 TB/s for 512 KiB; at the last size, the modeled child-path ceiling limits delivered capacity to 12.0024 TB/s. These are arithmetic projections, not measurements, and the long-stream case does not show that arbitrary workloads can combine data into such streams.
+
+The test establishes a small functional connection between RV64 instruction execution and lossless 512-bit stream framing. It does not encode or detect photons. The project still has no physical optical link, validated optical buffer, RTL processor, full-system memory model, or end-to-end workload benchmark.
 
 Accordingly, the 12 TB/s figure is a **design target that the assumptions are chosen to meet**, not achieved throughput. No processor prototype or operating-system execution exists, and the models do not establish performance for gaming, servers, video editing, or general software. The first practical evaluation should focus on accelerator-style streaming and bulk transfers. Fine-grained CPU traffic remains an open question, not a claimed capability. The models do not show a CPU speedup.
 
@@ -100,7 +106,8 @@ A staged evaluation can make the concept testable:
 4. Model route allocation, congestion, failures, exception traffic, and fallback behavior.
 5. Compare one, two, and additional memory domains under identical accelerator-style and general-purpose traces.
 6. Report useful bandwidth separately from padded/raw bandwidth, plus median and tail latency, queue occupancy, correctness, and energy assumptions.
-7. Calibrate against published hardware data, then against a physical link or prototype when available; run application benchmarks only after the model can represent their compute and memory behavior.
+7. Connect instruction-generated memory transactions during execution to a cycle-accurate or RTL core/cache/router model; compare with a conventional electronic NoC and memory baseline using identical traces.
+8. Calibrate against published hardware data, then against a physical link or prototype when available; run application benchmarks only after the model can represent their compute and memory behavior.
 
 A result should be reported as a modeled projection until a calibrated model or hardware test supports it. A bandwidth gain should be reported separately from whole-application speedup.
 
